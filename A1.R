@@ -392,3 +392,10 @@ weightsMatrixUrban[!is.na(weightsMatrixUrban)]=1/length(weightsMatrixUrban[!is.n
 #sum urban class from all surrounding cells
 
 lcm_urban_2300=focal(urban,w=weightsMatrixUrban,fun="sum")
+
+#input the dem data
+demScot=rast('demScotland.tif')
+demScot=terra::resample(demScot,lcm_wood_900)
+
+#inspect
+plot(demScot)
