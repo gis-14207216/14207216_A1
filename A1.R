@@ -333,3 +333,7 @@ sum(weightsMatrixNorm,na.rm=T)
 
 #plot weights matrix
 plot(rast(weightsMatrixNorm))
+
+#sum neighbourhood values from all surrounding cells
+lcm_wood_900=focal(broadleaf,w=weightsMatrixNorm,fun="sum")
+plot(lcm_wood_900)
