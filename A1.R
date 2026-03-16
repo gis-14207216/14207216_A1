@@ -337,3 +337,58 @@ plot(rast(weightsMatrixNorm))
 #sum neighbourhood values from all surrounding cells
 lcm_wood_900=focal(broadleaf,w=weightsMatrixNorm,fun="sum")
 plot(lcm_wood_900)
+
+#create an vector object called reclassUrban which is zero for all classes except tghe two urban classes in the LCM
+reclassUrban = c(rep(0,19),1,1)
+
+# combine with the LCM categories into a matrix of old and new values.
+RCmatrixUrban= cbind(levels(LCM)[[1]],reclass)
+
+RCmatrixUrban=RCmatrixUrban[,2:3]
+
+#apply function to make sure new columns are numeric (here the "2" specifies that we want to apply the as.numeric function to columns, where "1" would have specified rows)
+RCmatrixUrban=apply(RCmatrixUrban,2,FUN=as.numeric)
+#Use the reclassify() function to asssign new values to LCM with our reclassification matrix
+urban = classify(LCM, RCmatrixUrban)
+
+#neighbourhood weights matrix to sum all available resources for each cell
+#get number of picels needed to cover the 2300 metre radius for the urban class (round() just rounds this to the nearest interger - because you can't have 0.5 pixels)
+nPixUrban=round(2300/res(LCM)[1])
+
+#next, you need to double this number (one for rows and one for columns) and add one (because a weights matrix always needs to be odd so that you have a central cell and an equal number of grid cells either side).
+nPixUrban=(nPixUrban*2)+1
+
+#buiild weights matrix
+weightsMatrixUrban=matrix(1:nPixUrban^2,nrow=nPixUrban,ncol=nPixUrban)
+
+#get focal cell 
+x=ceiling(ncol(weightsMatrixUrban)/2)
+y=ceiling(nrow(weightsMatrixUrban)/2)
+focalCell=weightsMatrixUrban[x,y]
+indFocal=which(weightsMatrixUrban==focalCell,arr.ind = TRUE)
+
+#compute distances
+distancesUrban=list()
+
+for(i in 1:nPixUrban^2){
+  ind.i=which(weightsMatrixUrban==i,arr.ind=T)
+  diffX=abs(ind.i[1,1]-indFocal[1,1])*res(LCM)[1]
+  diffY=abs(ind.i[1,2]-indFocal[1,2])*res(LCM)[1]
+  
+  dist.i=sqrt(diffX^2+diffY^2)
+  distancesUrban[[i]]=dist.i
+  
+}
+
+#add distance values to the weights matrix
+weightsMatrixUrban[]=unlist(distancesUrban)
+
+#set cells outside search radius to NA
+weightsMatrixUrban[weightsMatrixUrban>2300]=NA
+
+#normalise the weights matrix by dividing all cell values by the number of cells. 
+weightsMatrixUrban[!is.na(weightsMatrixUrban)]=1/length(weightsMatrixUrban[!is.na(weightsMatrixUrban)])
+
+#sum urban class from all surrounding cells
+
+lcm_urban_2300=focal(urban,w=weightsMatrixUrban,fun="sum")
