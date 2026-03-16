@@ -90,3 +90,118 @@ melesSF=st_as_sf(melesData,coords=c("x","y"),crs="EPSG:27700")
 #access levels of the raster by treating them as categorical data
 LCM<-as.factor(LCM)
 levels(LCM)
+
+#create an vector object called reclass
+reclass <- c(0,1,rep(0,19))
+
+# combine with the LCM categories into a matrix of old and new values.
+RCmatrix<- cbind(levels(LCM)[[1]],reclass)
+
+RCmatrix<-RCmatrix[,2:3]
+
+#apply function to make sure new columns are numeric (here the "2" specifies that we want to apply the as.numeric function to columns, where "1" would have specified rows)
+RCmatrix=apply(RCmatrix,2,FUN=as.numeric)
+#Use the reclassify() function to asssign new values to LCM with our reclassification matrix
+RCmatrix
+
+broadleaf <- classify(LCM, RCmatrix)
+
+#plot
+plot(broadleaf)
+plot(melesFin,add=TRUE)
+
+#function for automating whole dataset.
+
+landBuffer <- function(speciesData, r){         
+  
+  #buffer each point
+  melesBuffer <- st_buffer(speciesData, dist=r)                     
+  
+  #crop the woodland layer to the buffer extent
+  bufferlandcover <- crop(broadleaf, melesBuffer)              
+  
+  # now extract the raster values (which should all be 1 for woodland and 0 for everything else) within each buffer and sum to get number of woodland cells inside the buffers.
+  masklandcover <- extract(bufferlandcover, melesBuffer,fun="sum")      
+  #get woodland area (625 is the area in metres of each cell of our 25m raster)
+  landcoverArea <- masklandcover$LCMUK_1*625  
+  
+  # convert to precentage cover (we use the st_area() function from the sf package to get the area of our buffer) but convert to a numeric object (because sf applies units i.e. metres which then cant be entered into numeric calculations)
+  percentcover <- landcoverArea/as.numeric(st_area(melesBuffer))*100 
+  
+  # return the result
+  return(percentcover)                                       
+}
+resList=list()
+
+#loop
+radii<-seq(100,2000,by=100)
+for(i in radii){
+  res.i=landBuffer(speciesData=melesSF,r=i)
+  res.i
+  resList[[i/100]]=res.i
+  print(i)
+  
+}
+
+#collect all results together
+resFin=do.call("cbind",resList)
+
+#convert to data frame
+glmData=data.frame(resFin)
+
+#assign more intuitive column names
+colnames(glmData)=paste("radius",radii,sep="")
+
+head(glmData)
+
+#add in the presences data
+glmData$Pres<-melesData$Pres
+
+head(glmData)
+
+#init empty data frame
+glmRes=data.frame(radius=NA,loglikelihood=NA)
+
+#for loop to iterate over radius values and run a general linear model with glm()
+for(i in radii){
+  
+  #build the model formula  
+  n.i=paste0("Pres~","radius",i,sep ="")
+  
+  #run
+  glm.i=glm(formula(n.i),family = "binomial",data = glmData)
+  
+  #get logliklihood
+  ll.i=as.numeric(logLik(glm.i))
+  
+  #collect results
+  glmRes=rbind(glmRes,c(i,ll.i))
+  
+}
+
+#inspect
+head(glmRes)
+
+plot(glmRes$radius, glmRes$loglikelihood,
+     type="b",
+     pch=19,
+     lwd=2,
+     col="red",
+     xlab="Buffer radius (m)",
+     ylab="Log-likelihood",
+     cex.lab=1.3,
+     mgp=c(3.0,1,0))
+
+box()
+
+#determine the optimum buffer size
+
+#remove the NAs in the first row
+glmRes=glmRes[!is.na(glmRes),]
+
+#use the which.max function to subset the dataframe to the just the row containing the max log likelihood value
+
+opt=glmRes[which.max(glmRes$loglikelihood),]
+
+#print
+print(opt)
