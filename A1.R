@@ -500,3 +500,41 @@ plotsSP = createSpatialResamplingPlots(task,resample=sp_cvBinomial,
 cowplot::plot_grid(plotlist = plotsSP[["Plots"]], ncol = 3, nrow = 2,
                    labels = plotsSP[["Labels"]])
 
+##Random Forest
+lrnRF = makeLearner("classif.ranger",
+                    predict.type = "prob",
+                    fix.factors.prediction = TRUE)
+
+#random sampling cross-validation
+cvRF = resample(learner = lrnRF, task =task,
+                resampling = perf_levelCV, 
+                measures = mlr::auc,
+                show.info = FALSE)
+print(cvRF)
+
+#spatial partitioning cross-validation
+sp_cvRF = resample(learner = lrnRF, task =task,
+                   resampling = perf_level_spCV, 
+                   measures = mlr::auc,
+                   show.info = FALSE)
+print(sp_cvRF)
+
+##tune the parameters of RF to provide more robust predictions to new, unknown locations
+getParamSet(lrnRF)
+paramsRF = makeParamSet(
+  makeIntegerParam("mtry",lower = 1,upper = 3),
+  makeIntegerParam("min.node.size",lower = 1,upper = 20),
+  makeIntegerParam("num.trees",lower = 100,upper = 500)
+)
+
+# specifying random parameter value search
+tune_level = makeResampleDesc(method = "SpCV", iters = 5)
+ctrl = makeTuneControlRandom(maxit = 50)
+tuned_RF = tuneParams(learner = lrnRF,
+                      task = task,
+                      resampling = tune_level,
+                      measures = mlr::auc,
+                      par.set = paramsRF,
+                      control = ctrl,
+                      show.info = FALSE)
+print(tuned_RF)
