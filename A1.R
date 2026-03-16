@@ -399,3 +399,51 @@ demScot=terra::resample(demScot,lcm_wood_900)
 
 #inspect
 plot(demScot)
+
+#stack the covariate layers together
+allEnv=c(lcm_wood_900,lcm_urban_2300,demScot)
+names(allEnv)=c("broadleaf","urban","elev")
+
+#creat background points
+set.seed(11)
+
+#sample background - one point for every cell (9775)
+back = spatSample(allEnv,size=2000,as.points=TRUE,method="random",na.rm=TRUE) 
+back=back[!is.na(back$broadleaf),]
+back=st_as_sf(back,crs="EPSG:27700")
+
+# get environmental covariates at presence locations
+eP=terra::extract(allEnv,melesFin)
+
+#bind together the presence data using cbind() which binds together objects by column
+Pres.cov=st_as_sf(cbind(eP,melesFin))
+Pres.cov$Pres=1
+
+#Remove the first column which is just an ID field.
+Pres.cov=Pres.cov[,-1]
+
+#get coordinates for spatial cross-validation later
+coordsPres=st_coordinates(Pres.cov)
+
+#drop geometry column using st_drop_geometry()
+Back.cov=st_as_sf(data.frame(back,Pres=0))
+
+
+#get coordinates of background points for cross validation later
+coordsBack=st_coordinates(back)
+
+#combine
+coords=data.frame(rbind(coordsPres,coordsBack))
+
+#assign coumn names
+colnames(coords)=c("x","y")
+
+#combine pres and background
+all.cov=rbind(Pres.cov,Back.cov)
+
+#add coordinates
+all.cov=cbind(all.cov,coords)
+
+#remove any NAs
+all.cov=na.omit(all.cov)
+all.cov=st_drop_geometry(all.cov)
