@@ -538,3 +538,107 @@ tuned_RF = tuneParams(learner = lrnRF,
                       control = ctrl,
                       show.info = FALSE)
 print(tuned_RF)
+
+# make a grid for spatial blocking (maxent)
+area_grid = st_make_grid(melesFin, c(50000, 50000), what = "polygons", square = T)
+area_grid_sf=st_as_sf(area_grid)
+
+#the original grid from st_make_grid() is contained in a list so we can use the position of each square of that list as its ID.
+area_grid_sf$grid_id=1:length(lengths(area_grid))
+
+# plot
+plot(area_grid_sf$x)
+
+#check all points in correct place
+plot(melesFin$geometry,add=T)
+
+# set folds
+folds=area_grid_sf$grid_id
+dataPoints=st_as_sf(all.cov,coords = c("x","y"))
+st_crs(dataPoints)=crs(area_grid_sf)
+
+library(dismo)
+library(maxnet)
+library(glmnet)
+
+#set number of folds to use
+folds=5
+
+#partition presence and background data and assign to folds using the kfold() function.
+Pres.cov=all.cov[all.cov$Pres==1,]
+Back.cov=all.cov[all.cov$Pres==0,]
+kfold_pres = kfold(Pres.cov, folds)
+kfold_back = kfold(Back.cov, folds)
+eMax=list()
+
+for (i in 1:folds) {
+  train = Pres.cov[kfold_pres!= i,]
+  test = Pres.cov[kfold_pres == i,]
+  backTrain=Back.cov[kfold_back!=i,]
+  backTest=Back.cov[kfold_back==i,]
+  dataTrain=rbind(train,backTrain)
+  dataTest=rbind(test,backTest)
+  maxnetMod=maxnet(dataTrain$Pres, dataTrain[,1:3])
+  
+  eMax[[i]] = evaluate(p=dataTest[ which(dataTest$Pres==1),],a=dataTest[which(dataTest$Pres==0),],maxnetMod)
+}
+
+#print the result
+aucMax = sapply(eMax, function(x){slot(x, 'auc')} )
+print(mean(aucMax))
+
+#load precrec for more versatile model evaluation methods
+library(precrec)
+folds=area_grid_sf$grid_id
+
+maxEvalList=list()
+for (i in folds) {
+  #select fold - select all folds which are not 'i' to train the model
+  gridTrain=subset(area_grid_sf,area_grid_sf$grid_id!=i)
+  
+  #spatially subset the training data
+  train=data.frame(st_drop_geometry(st_intersection(gridTrain, dataPoints)))
+  
+  #spatially subset the test data 
+  gridTest=subset(area_grid_sf,area_grid_sf$grid_id==i)
+  
+  
+  test=data.frame(st_drop_geometry(st_intersection(gridTest, dataPoints)))  
+  
+  
+  #build model
+  train
+  maxnetMod=maxnet(train$Pres, train[1:3],
+                   classes="lq")   
+  
+  
+  #make prediction
+  pred=predict(maxnetMod, test,type="cloglog")
+  
+  #use precrec to get roc curves
+  precrec_proc=evalmod(scores = pred,labels = test$Pres,mode = "prcroc")
+  
+  
+  #get auc value
+  modauc=precrec::auc(precrec::evalmod(scores = pred, 
+                                       labels = test$Pres))
+  
+  
+  #add to list
+  maxEvalList[[i]]=modauc$aucs[1]
+  
+  #track
+  print(i)
+}
+mean(unlist(maxEvalList))
+
+#Specify the model
+glm.meles=glm(Pres~broadleaf+urban+elev,binomial(link='logit'),
+              data=all.cov)
+
+#predict and inspect the output
+prGLM=predict(allEnv,glm.meles,type="response")
+
+#plot
+plot(prGLM)
+
