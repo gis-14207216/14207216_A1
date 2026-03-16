@@ -447,3 +447,56 @@ all.cov=cbind(all.cov,coords)
 #remove any NAs
 all.cov=na.omit(all.cov)
 all.cov=st_drop_geometry(all.cov)
+
+##Model evaluation
+library(mlr)
+#For the makeClassifTask function to work, our target variable needs to be categorical (a "factor" in R) so let's tidy that up first
+task=all.cov
+head(all.cov)
+task$Pres=as.factor(task$Pres)
+task = makeClassifTask(data = task[,c(1:4)], target = "Pres",
+                       positive = "1", coordinates = task[,5:6])
+
+## Binomial (logistic regression)
+#use the make learner function to build the model approach. Fix factors prediction is set to TRUE here because our outcome is a factor (i.e. categorical: 0-1)
+lrnBinomial = makeLearner("classif.binomial",
+                          predict.type = "prob",
+                          fix.factors.prediction = TRUE)
+
+#set up resampling strategy (non-spatial cross-validation)
+perf_levelCV = makeResampleDesc(method = "RepCV", predict = "test", folds = 5, reps = 5)
+
+#set up resampling strategy for spatial cross-validation
+perf_level_spCV = makeResampleDesc(method = "SpRepCV", folds = 5, reps = 5) #sampling strategy to run five fold re-sampling five times
+
+#Binomial conventional cross validation (K fold)
+cvBinomial = resample(learner = lrnBinomial, task =task,
+                      resampling = perf_levelCV, 
+                      measures = mlr::auc,
+                      show.info = FALSE)
+print(cvBinomial)
+
+#create Spatial Resampling Plots
+plots = createSpatialResamplingPlots(task,resample=cvBinomial,
+                                     crs=crs(allEnv),datum=crs(allEnv),color.test = "red",point.size = 1)
+library(cowplot)
+
+#use the cowplot function to plot all folds out in a grid
+cowplot::plot_grid(plotlist = plots[["Plots"]], ncol = 3, nrow = 2,
+                   labels = plots[["Labels"]])
+
+##Binomial spatial cross validation
+sp_cvBinomial = resample(learner = lrnBinomial, task =task,
+                         resampling = perf_level_spCV, 
+                         measures = mlr::auc,
+                         show.info = FALSE)
+print(sp_cvBinomial)
+
+#make partition plots
+plotsSP = createSpatialResamplingPlots(task,resample=sp_cvBinomial,
+                                       crs=crs(allEnv),datum=crs(allEnv),color.test = "red",point.size = 1)
+
+#use the cowplot function to plot all folds out in a grid
+cowplot::plot_grid(plotlist = plotsSP[["Plots"]], ncol = 3, nrow = 2,
+                   labels = plotsSP[["Labels"]])
+
