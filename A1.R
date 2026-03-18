@@ -687,3 +687,80 @@ ggplot(glmNewElev, aes(x = elev, y = fit)) +
   geom_ribbon(data = glmNewElev, aes(y = fit, ymin = fit - 1.96 * se, ymax = fit + 1.96 * se),
               fill = "blue", alpha = 0.3) +
   geom_line(data = glmNewElev, aes(y = fit)) 
+
+##Point Process Modelling
+#load spatstat
+library(spatstat)
+
+#convert broadleaf object
+broadleafIm=raster.as.im(raster(allEnv$broadleaf))
+
+#convert urban object
+urbanIm=raster.as.im(raster(allEnv$urban))
+
+#convert elevation object
+elevIm=raster.as.im(raster(allEnv$elev))
+
+#create study window using the broadleafIm image object as a template
+window.poly=as.owin(urbanIm)
+plot(window.poly)#inspect
+
+#get coordinates from our melesFin object to create point pattern
+melesCoords=st_coordinates(melesFin) 
+
+#create point pattern ('ppp') object with the ppp() function
+pppmeles=ppp(melesCoords[,1],melesCoords[,2], window = window.poly)
+
+#inspect
+plot(allEnv$broadleaf)
+plot(pppmeles,add=T)
+
+#use as.ppp() to remove points outside the window
+pppmeles=as.ppp(pppmeles)
+
+#rescale from m to km
+pppmeles=spatstat.geom::rescale(pppmeles, 1000)
+
+#rescale image objects to conform with the point pattern 
+broadleafIm=spatstat.geom::rescale(broadleafIm,1000)
+elevIm=spatstat.geom::rescale(elevIm,1000)
+urbanIm=spatstat.geom::rescale(urbanIm,1000)
+
+Kcsr=envelope(pppmeles,Kest,nsim=39,VARIANCE=T,nSD=1,global =TRUE)
+plot(Kcsr,shade=c("hi","lo"),legend=T) #check whether our data fall within this envelope.
+
+ndTry=seq(100,1000,by=100)
+for(i in ndTry){
+  #build quadrature scheme
+  Q.i=quadscheme(pppmeles,method = "grid",nd=i)
+  #run a simple model
+  fit.i=ppm(Q.i~broadleafIm+elevIm+urbanIm)
+  print(i)
+  #print the AIC statistic
+  print(AIC(fit.i))
+}
+
+Q=quadscheme(pppmeles,method = "grid",nd=900)
+
+plot(rhohat(pppmeles,broadleafIm)) # broadleaf
+
+plot(rhohat(pppmeles,elevIm)) # elevation
+
+plot(rhohat(pppmeles,urbanIm)) # urban
+
+#Ripley’s K test
+firstPPMod=ppm(Q~poly(broadleafIm,3)+poly(elevIm,2)+poly(urbanIm,2)+x+y) 
+firstModEnv=envelope(firstPPMod,Kest,nsim=39,VARIANCE=TRUE,nSD=1,global =TRUE)
+plot(firstModEnv)
+
+#Thomas cluster process
+thomasMod=kppm(Q~poly(broadleafIm,3)+poly(elevIm,2)+poly(urbanIm,2)+x+y,"Thomas")
+thomasEnv=envelope(thomasMod,Kinhom,nsim=39,VARIANCE=TRUE,nSD=1,global=TRUE)
+plot(thomasEnv)
+plot(roc(thomasMod))
+auc.kppm(thomasMod)
+prPPMod=predict(thomasMod)
+plot(prPPMod)
+plot(rast(prPPMod))
+
+
