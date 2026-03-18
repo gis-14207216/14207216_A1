@@ -754,7 +754,9 @@ firstModEnv=envelope(firstPPMod,Kest,nsim=39,VARIANCE=TRUE,nSD=1,global =TRUE)
 plot(firstModEnv)
 
 #Thomas cluster process
-thomasMod=kppm(Q~poly(broadleafIm,3)+poly(elevIm,2)+poly(urbanIm,2)+x+y,"Thomas")
+thomasMod <- kppm(Q~poly(broadleafIm,3)+poly(elevIm,2)+poly(urbanIm,2)+x+y,
+                  "Thomas",
+                  control=list(maxit=2000, reltol=1e-8))
 thomasEnv=envelope(thomasMod,Kinhom,nsim=39,VARIANCE=TRUE,nSD=1,global=TRUE)
 plot(thomasEnv)
 plot(roc(thomasMod))
